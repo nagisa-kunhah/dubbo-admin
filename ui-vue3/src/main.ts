@@ -27,6 +27,7 @@ import Vue3ColorPicker from 'vue3-colorpicker'
 import 'vue3-colorpicker/style.css'
 import 'nprogress/nprogress.css'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
+import './style.css'
 
 import { updateAuthState } from '@/utils/AuthUtil'
 import { createPinia } from 'pinia'
