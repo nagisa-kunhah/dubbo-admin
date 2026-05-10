@@ -32,6 +32,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	ui "github.com/apache/dubbo-admin/app/dubbo-ui"
+	"github.com/apache/dubbo-admin/pkg/config/app"
 	"github.com/apache/dubbo-admin/pkg/config/console"
 	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
 	consoleauth "github.com/apache/dubbo-admin/pkg/console/auth"
@@ -39,6 +40,9 @@ import (
 	"github.com/apache/dubbo-admin/pkg/console/router"
 	"github.com/apache/dubbo-admin/pkg/core/logger"
 	"github.com/apache/dubbo-admin/pkg/core/runtime"
+	mcpcore "github.com/apache/dubbo-admin/pkg/mcp/core"
+	mcp_tools "github.com/apache/dubbo-admin/pkg/mcp/tools"
+	mcphttp "github.com/apache/dubbo-admin/pkg/mcp/transport/http"
 )
 
 func init() {
@@ -46,9 +50,11 @@ func init() {
 }
 
 type consoleWebServer struct {
-	Engine *gin.Engine
-	cfg    *console.Config
-	cs     consolectx.Context
+	mcpPath   string
+	mcpAPIKey string
+	Engine    *gin.Engine
+	cfg       *console.Config
+	cs        consolectx.Context
 }
 
 func (c *consoleWebServer) RequiredDependencies() []runtime.ComponentType {
@@ -110,6 +116,7 @@ func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) e
 	if err := router.InitRouter(c.Engine, c.cs); err != nil {
 		return err
 	}
+	c.registerMCPEndpoints(coreRt, c.Engine)
 	httpServer := c.startHttpServer(errChan)
 	select {
 	case <-stop:
@@ -121,6 +128,57 @@ func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) e
 		return err
 	}
 	return nil
+}
+
+func (c *consoleWebServer) registerMCPEndpoints(coreRt runtime.Runtime, engine *gin.Engine) {
+	// 从runtime获取完整配置
+	var cfg app.AdminConfig = coreRt.Config()
+
+	// 检查MCP是否启用
+	if cfg.MCP == nil || !cfg.MCP.Enabled {
+		return
+	}
+
+	// 确定端点路径
+	path := cfg.MCP.Path
+	if path == "" {
+		path = "/api/mcp"
+	}
+
+	// 存储MCP路径和API Key供auth中间件使用
+	c.mcpPath = path
+	c.mcpAPIKey = cfg.MCP.APIKey
+
+	// 直接创建MCP服务器
+	consoleCtx := consolectx.NewConsoleContext(coreRt)
+	server := mcpcore.NewServer("dubbo-admin", "1.0.0")
+	server.SetConsoleContext(consoleCtx)
+
+	// 注册所有工具
+	reg := server.GetRegistry()
+	reg.RegisterRegistrar(&mcp_tools.MetricsRegistrar{})
+	reg.RegisterRegistrar(&mcp_tools.ResourceSearchRegistrar{})
+	reg.RegisterRegistrar(&mcp_tools.ServiceRegistrar{})
+	reg.RegisterRegistrar(&mcp_tools.DetailRegistrar{})
+	reg.RegisterAll()
+
+	// 创建HTTP处理器
+	handler := mcphttp.NewHandler(server)
+
+	// 注册路由
+	engine.POST(path, func(ctx *gin.Context) {
+		if c.mcpAPIKey != "" && ctx.GetHeader("Authorization") != "Bearer "+c.mcpAPIKey {
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
+			return
+		}
+		handler.ServeHTTP(ctx.Writer, ctx.Request)
+	})
+
+	authStatus := "no-auth"
+	if c.mcpAPIKey != "" {
+		authStatus = "with-auth"
+	}
+	logger.Sugar().Infof("MCP endpoint registered at %s with %d tools (%s)", path, len(reg.List()), authStatus)
 }
 
 func (c *consoleWebServer) startHttpServer(errChan chan error) *http.Server {
