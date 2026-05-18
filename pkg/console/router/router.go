@@ -22,10 +22,12 @@ import (
 
 	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
 	"github.com/apache/dubbo-admin/pkg/console/handler"
+	consolemcp "github.com/apache/dubbo-admin/pkg/console/mcp"
 )
 
 func InitRouter(r *gin.Engine, ctx consolectx.Context) {
 	router := r.Group("/api/v1")
+	InitMCPRouter(r, ctx)
 	{
 		prometheus := router.Group("/promQL")
 		prometheus.GET("/query", handler.PromQL(ctx))
@@ -141,4 +143,8 @@ func InitRouter(r *gin.Engine, ctx consolectx.Context) {
 	router.GET("/overview", handler.ClusterOverview(ctx))
 	router.GET("/metadata", handler.AdminMetadata(ctx))
 	router.GET("/meshes", handler.ListMeshes(ctx))
+}
+
+func InitMCPRouter(r *gin.Engine, ctx consolectx.Context) {
+	r.Any("/api/v1/mcp", gin.WrapH(consolemcp.NewHTTPHandler(ctx)))
 }
