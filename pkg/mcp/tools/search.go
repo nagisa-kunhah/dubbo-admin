@@ -21,7 +21,8 @@ import (
 	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
 	"github.com/apache/dubbo-admin/pkg/console/model"
 	"github.com/apache/dubbo-admin/pkg/console/service"
-	"github.com/apache/dubbo-admin/pkg/mcp/common"
+	"github.com/apache/dubbo-admin/pkg/mcp/registry"
+	"github.com/apache/dubbo-admin/pkg/mcp/types"
 )
 
 // searchExecutor 搜索执行器接口
@@ -120,11 +121,11 @@ func (e *appNameSearchExecutor) execute(ctx consolectx.Context, keyword, mesh st
 func (e *appNameSearchExecutor) buildResult(pagedResult *model.SearchPaginationResult, keyword string, pageSize, pageNumber int) map[string]any {
 	apps := extractGlobalApplications(pagedResult)
 	return map[string]any{
-		"keyword":     keyword,
-		"pageSize":    pageSize,
-		"pageNumber":  pageNumber,
+		"keyword":      keyword,
+		"pageSize":     pageSize,
+		"pageNumber":   pageNumber,
 		"applications": apps,
-		"totalCount":  len(apps),
+		"totalCount":   len(apps),
 	}
 }
 

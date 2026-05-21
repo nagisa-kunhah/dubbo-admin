@@ -21,8 +21,138 @@ import (
 	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
 	"github.com/apache/dubbo-admin/pkg/console/model"
 	"github.com/apache/dubbo-admin/pkg/console/service"
-	"github.com/apache/dubbo-admin/pkg/mcp/common"
+	"github.com/apache/dubbo-admin/pkg/mcp/registry"
+	"github.com/apache/dubbo-admin/pkg/mcp/types"
 )
+
+// ServiceRegistrar 服务工具注册器
+type ServiceRegistrar struct{}
+
+// RegisterTools 实现 ToolRegistrar 接口
+func (r *ServiceRegistrar) RegisterTools(reg *registry.Registry) {
+	reg.Register(types.ToolDef{
+		Name:        "search_services",
+		Description: "搜索 Dubbo 服务，支持按服务名过滤和分页",
+		InputSchema: types.InputSchema{
+			Type: "object",
+			Properties: map[string]types.PropertyDef{
+				"keywords": {
+					Type:        "string",
+					Description: "服务名搜索关键字，支持模糊匹配",
+				},
+				"mesh": {
+					Type:        "string",
+					Description: "Mesh 名称，默认使用配置中的默认 mesh",
+				},
+				"pageSize": {
+					Type:        "integer",
+					Description: "每页数量",
+					Default:     DefaultPageSize,
+				},
+				"pageNumber": {
+					Type:        "integer",
+					Description: "页码，从 1 开始",
+					Default:     DefaultPageNumber,
+				},
+			},
+		},
+		Handler: SearchServices,
+	})
+
+	reg.Register(types.ToolDef{
+		Name:        "get_service_distribution",
+		Description: "获取服务关联的 provider/consumer 应用分布",
+		InputSchema: types.InputSchema{
+			Type:     "object",
+			Required: []string{"serviceName"},
+			Properties: map[string]types.PropertyDef{
+				"serviceName": {
+					Type:        "string",
+					Description: "服务名称",
+				},
+				"group": {
+					Type:        "string",
+					Description: "服务分组",
+					Default:     "",
+				},
+				"version": {
+					Type:        "string",
+					Description: "服务版本",
+					Default:     "",
+				},
+				"side": {
+					Type:        "string",
+					Description: "服务端或消费者 (provider/consumer)",
+					Default:     string(ServiceSideProvider),
+					Enum:        []string{string(ServiceSideProvider), string(ServiceSideConsumer)},
+				},
+				"mesh": {
+					Type:        "string",
+					Description: "Mesh 名称，默认使用配置中的默认 mesh",
+				},
+			},
+		},
+		Handler: GetServiceDistribution,
+	})
+
+	// 获取服务详情
+	reg.Register(types.ToolDef{
+		Name:        "get_service_detail",
+		Description: "获取服务详情，包括语言和方法列表",
+		InputSchema: types.InputSchema{
+			Type:     "object",
+			Required: []string{"serviceName"},
+			Properties: map[string]types.PropertyDef{
+				"serviceName": {
+					Type:        "string",
+					Description: "服务名称",
+				},
+				"version": {
+					Type:        "string",
+					Description: "服务版本",
+				},
+				"group": {
+					Type:        "string",
+					Description: "服务分组",
+				},
+				"mesh": {
+					Type:        "string",
+					Description: "Mesh 名称，默认使用配置中的默认 mesh",
+				},
+			},
+		},
+		Handler: GetServiceDetail,
+	})
+
+	// 获取服务详情
+	reg.Register(types.ToolDef{
+		Name:        "get_service_detail",
+		Description: "获取服务详情，包括语言和方法列表",
+		InputSchema: types.InputSchema{
+			Type:     "object",
+			Required: []string{"serviceName"},
+			Properties: map[string]types.PropertyDef{
+				"serviceName": {
+					Type:        "string",
+					Description: "服务名称",
+				},
+				"version": {
+					Type:        "string",
+					Description: "服务版本",
+				},
+				"group": {
+					Type:        "string",
+					Description: "服务分组",
+				},
+				"mesh": {
+					Type:        "string",
+					Description: "Mesh 名称，默认使用配置中的默认 mesh",
+				},
+			},
+		},
+		Handler: GetServiceDetail,
+	})
+}
 
 // SearchServices 搜索服务
 func SearchServices(ctx consolectx.Context, args map[string]any) (*common.ToolResult, error) {
@@ -46,9 +176,9 @@ func SearchServices(ctx consolectx.Context, args map[string]any) (*common.ToolRe
 	return buildServiceSearchResult(result, keywords, mesh, pageSize, pageNumber)
 }
 
-// GetServiceDetail 获取服务详情
-func GetServiceDetail(ctx consolectx.Context, args map[string]any) (*common.ToolResult, error) {
-	helper := common.NewArgsHelper(args)
+// GetServiceDistribution 获取服务关联的应用分布
+func GetServiceDistribution(ctx consolectx.Context, args map[string]any) (*types.ToolResult, error) {
+	helper := NewArgsHelper(args)
 	serviceName := helper.GetString("serviceName", "")
 
 	params := serviceDetailParams{
@@ -156,14 +286,36 @@ func extractServices(result *model.SearchPaginationResult) ([]any, int) {
 
 	resultSlice := make([]any, 0, len(services))
 	for _, svc := range services {
-		if svc != nil {
-			resultSlice = append(resultSlice, map[string]any{
-				"serviceName":     svc.ServiceName,
-				"version":         svc.Version,
-				"group":           svc.Group,
-				"consumerAppName": svc.ConsumerAppName,
-			})
-		}
+		resultSlice = append(resultSlice, map[string]any{
+			"serviceName":     svc.ServiceName,
+			"version":         svc.Version,
+			"group":           svc.Group,
+			"providerAppName": svc.ProviderAppName,
+			"consumerAppName": svc.ConsumerAppName,
+		})
 	}
 	return resultSlice, int(result.PageInfo.Total)
+}
+
+// GetServiceDetail 获取服务详情
+func GetServiceDetail(ctx consolectx.Context, args map[string]any) (*types.ToolResult, error) {
+	helper := NewArgsHelper(args)
+	serviceName := helper.GetString("serviceName", "")
+	if serviceName == "" {
+		return ErrorResult(fmt.Errorf("required parameter 'serviceName' is missing")), nil
+	}
+
+	req := &model.ServiceDetailReq{
+		ServiceName: serviceName,
+		Version:     helper.GetString("version", ""),
+		Group:       helper.GetString("group", ""),
+		Mesh:        GetMeshArg(ctx, args),
+	}
+
+	detail, err := service.GetServiceDetail(ctx, req)
+	if err != nil {
+		return ErrorResult(err), nil
+	}
+
+	return JsonResult(detail)
 }

@@ -26,13 +26,14 @@ import (
 
 	"github.com/apache/dubbo-admin/pkg/mcp"
 	"github.com/apache/dubbo-admin/pkg/mcp/common"
+	"github.com/llm-d/llm-d-workload-variant-autoscaler/pkg/core"
 )
 
 // SSETransport Server-Sent Events传输层
 type SSETransport struct {
-	server   *mcp.Server
-	clients  map[*SSEClient]bool
-	mu       sync.RWMutex
+	server    *core.Server
+	clients   map[*SSEClient]bool
+	mu        sync.RWMutex
 	broadcast chan []byte
 }
 
@@ -58,8 +59,8 @@ func NewSSEClient(id string) *SSEClient {
 // NewSSETransport 创建SSE传输层
 func NewSSETransport(server *mcp.Server) *SSETransport {
 	return &SSETransport{
-		server:   server,
-		clients:  make(map[*SSEClient]bool),
+		server:    server,
+		clients:   make(map[*SSEClient]bool),
 		broadcast: make(chan []byte, 256),
 	}
 }
@@ -83,7 +84,11 @@ func (t *SSETransport) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	t.sendToClient(client, t.sseEvent("connected", "SSE connection established"))
 
 	// 等待断开连接
-	<-client.ctx.Done()
+	select {
+	case <-client.ctx.Done():
+	case <-r.Context().Done():
+		client.done()
+	}
 
 	t.mu.Lock()
 	delete(t.clients, client)
