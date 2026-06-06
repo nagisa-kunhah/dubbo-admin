@@ -55,6 +55,14 @@ type AdminConfig struct {
 	// RuleVersioning records lightweight audit history for governor-managed traffic rules.
 	// Live rule state remains in ResourceManager/registry.
 	RuleVersioning *versioning.Config `json:"ruleVersioning,omitempty" yaml:"ruleVersioning,omitempty"`
+	// MCP configuration
+	MCP *MCPConfig `json:"mcp,omitempty" yaml:"mcp,omitempty"`
+}
+
+type MCPConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Path    string `json:"path,omitempty" yaml:"path,omitempty"`
+	APIKey  string `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
 }
 
 var _ = &AdminConfig{}

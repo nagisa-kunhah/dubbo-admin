@@ -55,6 +55,12 @@ console:
     password: dubbo@2025
     expirationTime: 3600
 
+# [Optional] Model Context Protocol endpoint. Disabled unless explicitly enabled.
+mcp:
+  enabled: false
+  path: /api/mcp
+  # apiKey: change-me
+
 # [Optional] config for data storage, default is memory
 store:
   # [Optional] store data in memory

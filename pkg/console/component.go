@@ -39,6 +39,7 @@ import (
 	"github.com/apache/dubbo-admin/pkg/console/router"
 	"github.com/apache/dubbo-admin/pkg/core/logger"
 	"github.com/apache/dubbo-admin/pkg/core/runtime"
+	"github.com/apache/dubbo-admin/pkg/mcp"
 )
 
 func init() {
@@ -110,6 +111,7 @@ func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) e
 	if err := router.InitRouter(c.Engine, c.cs); err != nil {
 		return err
 	}
+	c.registerMCPEndpoint(coreRt)
 	httpServer := c.startHttpServer(errChan)
 	select {
 	case <-stop:
@@ -121,6 +123,39 @@ func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) e
 		return err
 	}
 	return nil
+}
+
+func (c *consoleWebServer) registerMCPEndpoint(coreRt runtime.Runtime) {
+	cfg := coreRt.Config()
+	if cfg.MCP == nil || !cfg.MCP.Enabled {
+		return
+	}
+
+	path := cfg.MCP.Path
+	if path == "" {
+		path = "/api/mcp"
+	}
+
+	server := mcp.NewServer("dubbo-admin", "1.0.0")
+	server.SetConsoleContext(consolectx.NewConsoleContext(coreRt))
+	mcp.RegisterTools(server)
+	c.Engine.POST(path, mcpAPIKeyMiddleware(cfg.MCP.APIKey), server.HandleHTTP)
+	logger.Sugar().Infof("MCP endpoint registered at %s", path)
+}
+
+func mcpAPIKeyMiddleware(apiKey string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if apiKey == "" {
+			ctx.Next()
+			return
+		}
+		if ctx.GetHeader("Authorization") != "Bearer "+apiKey {
+			ctx.Header("WWW-Authenticate", "Bearer")
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+			return
+		}
+		ctx.Next()
+	}
 }
 
 func (c *consoleWebServer) startHttpServer(errChan chan error) *http.Server {
