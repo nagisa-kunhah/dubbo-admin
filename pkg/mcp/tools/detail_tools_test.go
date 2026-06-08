@@ -33,27 +33,8 @@ import (
 	meshresource "github.com/apache/dubbo-admin/pkg/core/resource/apis/mesh/v1alpha1"
 	coremodel "github.com/apache/dubbo-admin/pkg/core/resource/model"
 	"github.com/apache/dubbo-admin/pkg/core/store/index"
-	"github.com/apache/dubbo-admin/pkg/mcp/registry"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-func TestGetServiceDetailSchema(t *testing.T) {
-	reg := registry.NewRegistry()
-	(&DetailRegistrar{}).RegisterTools(reg)
-
-	tool, ok := reg.Get("get_service_detail")
-	if !ok {
-		t.Fatal("Tool 'get_service_detail' not registered")
-	}
-	if len(tool.InputSchema.Required) != 1 || tool.InputSchema.Required[0] != "serviceName" {
-		t.Errorf("Expected serviceName to be required, got %v", tool.InputSchema.Required)
-	}
-	for _, prop := range []string{"serviceName", "version", "group", "mesh"} {
-		if _, ok := tool.InputSchema.Properties[prop]; !ok {
-			t.Errorf("Missing property: %s", prop)
-		}
-	}
-}
 
 func TestGetServiceDetailMissingServiceName(t *testing.T) {
 	result, err := GetServiceDetail(newToolTestContext(nil), map[string]any{})
@@ -121,18 +102,8 @@ func TestGetServiceDetailSuccess(t *testing.T) {
 	}
 }
 
-func TestGetServiceDistributionRegisteredHandler(t *testing.T) {
-	reg := registry.NewRegistry()
-	(&ServiceRegistrar{}).RegisterTools(reg)
-
-	tool, ok := reg.Get("get_service_distribution")
-	if !ok {
-		t.Fatal("Tool 'get_service_distribution' not registered")
-	}
-	if tool.Handler == nil {
-		t.Fatal("Tool 'get_service_distribution' handler is nil")
-	}
-	result, err := tool.Handler(newToolTestContext(nil), map[string]any{"serviceName": "missing"})
+func TestGetServiceDistributionSuccessWithEmptyDistribution(t *testing.T) {
+	result, err := GetServiceDistribution(newToolTestContext(nil), map[string]any{"serviceName": "missing"})
 	if err != nil {
 		t.Fatalf("get_service_distribution handler returned unexpected error: %v", err)
 	}

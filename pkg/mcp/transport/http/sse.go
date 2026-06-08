@@ -26,12 +26,11 @@ import (
 
 	"github.com/apache/dubbo-admin/pkg/mcp"
 	"github.com/apache/dubbo-admin/pkg/mcp/common"
-	"github.com/llm-d/llm-d-workload-variant-autoscaler/pkg/core"
 )
 
 // SSETransport Server-Sent Events传输层
 type SSETransport struct {
-	server    *core.Server
+	server    *mcp.Server
 	clients   map[*SSEClient]bool
 	mu        sync.RWMutex
 	broadcast chan []byte
