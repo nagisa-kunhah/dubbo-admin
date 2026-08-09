@@ -179,6 +179,7 @@ import { getTagRuleDetailAPI } from '@/api/service/traffic'
 import { useRoute } from 'vue-router'
 import { HTTP_STATUS } from '@/base/http/constants'
 import RuleHistoryPanel from '../../_shared/RuleHistoryPanel.vue'
+import { createTrafficRuleContentContribution, useAIContextProvider } from '@/ai-context'
 
 const route = useRoute()
 const ruleName = computed(() => String(route.params?.ruleName || ''))
@@ -222,6 +223,12 @@ const tagRuleDetail = reactive({
       ]
     }
   ]
+})
+
+useAIContextProvider({
+  id: 'rule-content',
+  priority: 80,
+  collect: () => createTrafficRuleContentContribution('tag-rule', tagRuleDetail)
 })
 
 // Get label routing details

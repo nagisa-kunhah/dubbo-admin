@@ -32,12 +32,18 @@ import { useMeshStore } from '@/stores/mesh'
 import { listApplicationEvent } from '@/api/service/app'
 import EventTimeline from '@/components/EventTimeline.vue'
 import type { EventItem } from '@/types/api'
+import { createEventListContribution, useAIContextProvider } from '@/ai-context'
 
 const route = useRoute()
 const meshStore = useMeshStore()
 const defaultPageSize = 20
 
 const eventList = ref<EventItem[]>([])
+useAIContextProvider({
+  id: 'event-list',
+  priority: 60,
+  collect: () => createEventListContribution(eventList.value)
+})
 const loading = ref(false)
 const loadingMore = ref(false)
 const hasMore = ref(false)

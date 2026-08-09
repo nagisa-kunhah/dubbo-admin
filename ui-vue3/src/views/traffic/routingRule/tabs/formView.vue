@@ -212,6 +212,7 @@ import { message } from 'ant-design-vue'
 import { getConditionRuleDetailAPI } from '@/api/service/traffic'
 import { useRoute } from 'vue-router'
 import { HTTP_STATUS } from '@/base/http/constants'
+import { createTrafficRuleContentContribution, useAIContextProvider } from '@/ai-context'
 import RuleHistoryPanel from '../../_shared/RuleHistoryPanel.vue'
 
 interface ConditionRuleDetail {
@@ -250,6 +251,12 @@ const conditionRuleDetail = reactive<ConditionRuleDetail>({
   version: '',
   group: '',
   conditions: []
+})
+
+useAIContextProvider({
+  id: 'rule-content',
+  priority: 80,
+  collect: () => createTrafficRuleContentContribution('condition-rule', conditionRuleDetail)
 })
 
 const actionObj = computed(() => {
