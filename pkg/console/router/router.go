@@ -24,7 +24,11 @@ import (
 	"github.com/apache/dubbo-admin/pkg/console/handler"
 )
 
-func InitRouter(r *gin.Engine, ctx consolectx.Context) {
+func InitRouter(r *gin.Engine, ctx consolectx.Context) error {
+	authHandler, err := handler.NewAuthHandler(ctx)
+	if err != nil {
+		return err
+	}
 	router := r.Group("/api/v1")
 	{
 		prometheus := router.Group("/promQL")
@@ -33,8 +37,12 @@ func InitRouter(r *gin.Engine, ctx consolectx.Context) {
 
 	{
 		auth := router.Group("/auth")
-		auth.POST("/login", handler.Login(ctx))
-		auth.POST("/logout", handler.Logout(ctx))
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/logout", authHandler.Logout)
+		auth.GET("/providers", authHandler.Providers)
+		auth.GET("/providers/:provider/login", authHandler.ProviderLogin)
+		auth.GET("/providers/:provider/callback", authHandler.ProviderCallback)
+		auth.GET("/userinfo", authHandler.UserInfo)
 	}
 
 	{
@@ -141,4 +149,5 @@ func InitRouter(r *gin.Engine, ctx consolectx.Context) {
 	router.GET("/overview", handler.ClusterOverview(ctx))
 	router.GET("/metadata", handler.AdminMetadata(ctx))
 	router.GET("/meshes", handler.ListMeshes(ctx))
+	return nil
 }

@@ -31,6 +31,7 @@ require (
 	github.com/gin-contrib/zap v1.1.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-co-op/gocron v1.9.0
+	github.com/go-jose/go-jose/v4 v4.0.5
 	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/zapr v1.3.0
 	github.com/golang/protobuf v1.5.4
@@ -45,6 +46,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/oauth2 v0.28.0
 	golang.org/x/text v0.31.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
@@ -129,7 +131,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
@@ -247,7 +248,6 @@ require (
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
