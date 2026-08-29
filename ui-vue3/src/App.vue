@@ -15,7 +15,7 @@
   ~ limitations under the License.
 -->
 <script setup lang="ts">
-import { RouterView, useRouter } from 'vue-router'
+import { RouterView } from 'vue-router'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { provide, reactive, ref, watch } from 'vue'
@@ -24,8 +24,6 @@ import { QuestionCircleOutlined, SlackOutlined } from '@ant-design/icons-vue'
 import { PROVIDE_INJECT_KEY } from '@/base/enums/ProvideInject'
 import { PRIMARY_COLOR } from '@/base/constants'
 import { i18n, localeConfig } from '@/base/i18n'
-import devTool from '@/utils/DevToolUtil'
-import { getAuthState } from '@/utils/AuthUtil'
 import AgentDrawer from '@/components/AgentDrawer.vue'
 
 dayjs.locale('en')
@@ -48,12 +46,10 @@ function globalQuestion() {
 
 const localeGlobal = reactive(i18n.global.locale)
 
-const router = useRouter()
-
 const agentDrawerOpen = ref<boolean>(false)
 
 const openAgentDrawer = () => {
-    agentDrawerOpen.value = true
+  agentDrawerOpen.value = true
 }
 </script>
 
@@ -91,7 +87,6 @@ const openAgentDrawer = () => {
 </template>
 
 <style lang="less">
-
 .__global_float_button_question {
   right: 24px;
 }

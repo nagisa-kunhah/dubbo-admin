@@ -32,3 +32,33 @@ func TestServerComponent_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestServerComponent_ValidateAuth(t *testing.T) {
+	tests := []struct {
+		name string
+		auth compServer.AuthSpec
+		want string
+	}{
+		{name: "disabled by default", auth: compServer.AuthSpec{}},
+		{name: "missing jwks", auth: compServer.AuthSpec{Enabled: true, Issuer: "dubbo-admin", Audience: "dubbo-admin-ai"}, want: "jwks_url"},
+		{name: "invalid jwks", auth: compServer.AuthSpec{Enabled: true, JWKSURL: "://bad", Issuer: "dubbo-admin", Audience: "dubbo-admin-ai"}, want: "jwks_url"},
+		{name: "missing issuer", auth: compServer.AuthSpec{Enabled: true, JWKSURL: "https://admin.example/jwks", Audience: "dubbo-admin-ai"}, want: "issuer"},
+		{name: "missing audience", auth: compServer.AuthSpec{Enabled: true, JWKSURL: "https://admin.example/jwks", Issuer: "dubbo-admin"}, want: "audience"},
+		{name: "valid", auth: compServer.AuthSpec{Enabled: true, JWKSURL: "https://admin.example/jwks", Issuer: "dubbo-admin", Audience: "dubbo-admin-ai"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			component, err := compServer.NewServerComponentWithAuth(8080, "0.0.0.0", false, []string{"*"}, 30, 30, tt.auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = component.Validate()
+			if tt.want == "" && err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}

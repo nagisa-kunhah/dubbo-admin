@@ -15,33 +15,19 @@
  * limitations under the License.
  */
 
-package server
+package console
 
 import (
-	"dubbo-admin-ai/runtime"
-	"fmt"
+	"net/http"
+	"testing"
 
-	"gopkg.in/yaml.v3"
+	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
 )
 
-// ServerFactory component factory function (explicit registration, does not use init)
-func ServerFactory(spec *yaml.Node) (runtime.Component, error) {
-	if spec == nil {
-		return nil, fmt.Errorf("spec is nil")
+func TestAdminSessionOptions(t *testing.T) {
+	cfg := &configauth.Config{ExpirationTime: 3600, SessionCookieSecure: true}
+	got := adminSessionOptions(cfg)
+	if !got.HttpOnly || !got.Secure || got.SameSite != http.SameSiteLaxMode || got.Path != "/" || got.MaxAge != 3600 {
+		t.Fatalf("adminSessionOptions() = %+v", got)
 	}
-
-	var cfg ServerSpec
-	if err := spec.Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to decode server spec: %w", err)
-	}
-
-	return NewServerComponentWithAuth(
-		cfg.Port,
-		cfg.Host,
-		cfg.Debug,
-		cfg.CORSOrigins,
-		cfg.ReadTimeout,
-		cfg.WriteTimeout,
-		cfg.Auth,
-	)
 }

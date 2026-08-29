@@ -41,6 +41,8 @@ type ServerComponent struct {
 	corsOrigins  []string
 	readTimeout  int
 	writeTimeout int
+	auth         AuthSpec
+	jwtVerifier  *engine.JWTVerifier
 }
 
 func NewServerComponent(
@@ -68,6 +70,23 @@ func NewServerComponent(
 	}, nil
 }
 
+func NewServerComponentWithAuth(
+	port int,
+	host string,
+	debug bool,
+	corsOrigins []string,
+	readTimeout int,
+	writeTimeout int,
+	auth AuthSpec,
+) (runtime.Component, error) {
+	component, err := NewServerComponent(port, host, debug, corsOrigins, readTimeout, writeTimeout)
+	if err != nil {
+		return nil, err
+	}
+	component.(*ServerComponent).auth = auth
+	return component, nil
+}
+
 // Name returns the component name
 func (s *ServerComponent) Name() string {
 	if s.instanceName != "" {
@@ -93,11 +112,23 @@ func (s *ServerComponent) Validate() error {
 	if s.writeTimeout <= 0 {
 		return fmt.Errorf("write_timeout must be greater than 0")
 	}
+	if err := s.auth.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *ServerComponent) Init(rt *runtime.Runtime) error {
 	s.rt = rt
+	if s.auth.Enabled {
+		verifier, err := engine.NewJWTVerifier(engine.JWTAuthConfig{
+			JWKSURL: s.auth.JWKSURL, Issuer: s.auth.Issuer, Audience: s.auth.Audience,
+		}, http.DefaultClient)
+		if err != nil {
+			return fmt.Errorf("initialize AI JWT authentication: %w", err)
+		}
+		s.jwtVerifier = verifier
+	}
 	rt.GetLogger().Info("Server component initialized",
 		"port", s.port,
 		"host", s.host)
@@ -127,7 +158,11 @@ func (s *ServerComponent) Start() error {
 	}
 
 	// Create router with AI interface
-	router := engine.NewRouter(agentComponent.Agent)
+	var authMiddleware []gin.HandlerFunc
+	if s.jwtVerifier != nil {
+		authMiddleware = append(authMiddleware, s.jwtVerifier.Middleware())
+	}
+	router := engine.NewRouter(agentComponent.Agent, authMiddleware...)
 
 	// Add health check endpoint
 	router.GetEngine().GET("/health", func(c *gin.Context) {

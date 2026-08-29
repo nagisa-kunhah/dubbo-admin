@@ -13,7 +13,7 @@ type Router struct {
 	sessionMgr *session.Manager
 }
 
-func NewRouter(agent *react.ReActAgent) *Router {
+func NewRouter(agent *react.ReActAgent, middleware ...gin.HandlerFunc) *Router {
 	sessionMgr := session.NewManager()
 	handler := NewAgentHandler(agent, sessionMgr)
 
@@ -23,13 +23,16 @@ func NewRouter(agent *react.ReActAgent) *Router {
 		sessionMgr: sessionMgr,
 	}
 
-	router.setupRoutes()
+	router.setupRoutes(middleware...)
 	return router
 }
 
-func (r *Router) setupRoutes() {
+func (r *Router) setupRoutes(middlewares ...gin.HandlerFunc) {
 	// Add CORS middleware
 	r.engine.Use(corsMiddleware())
+	for _, middleware := range middlewares {
+		r.engine.Use(middleware)
+	}
 
 	// API v1 group
 	v1 := r.engine.Group("/api/v1/ai")

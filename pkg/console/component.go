@@ -22,6 +22,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +36,10 @@ import (
 	"github.com/apache/dubbo-admin/pkg/common/bizerror"
 	"github.com/apache/dubbo-admin/pkg/config/app"
 	"github.com/apache/dubbo-admin/pkg/config/console"
+	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
+	consoleauth "github.com/apache/dubbo-admin/pkg/console/auth"
 	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
+	"github.com/apache/dubbo-admin/pkg/console/handler"
 	"github.com/apache/dubbo-admin/pkg/console/model"
 	"github.com/apache/dubbo-admin/pkg/console/router"
 	"github.com/apache/dubbo-admin/pkg/core/logger"
@@ -48,12 +52,15 @@ func init() {
 }
 
 type consoleWebServer struct {
-	Engine   *gin.Engine
-	cfg      *console.Config
-	cs       consolectx.Context
-	mcpPath  string // MCP端点路径，用于auth中间件跳过认证
-	mcpAPIKey string // MCP API密钥，用于认证
+	Engine      *gin.Engine
+	cfg         *console.Config
+	cs          consolectx.Context
+	mcpPath     string // MCP端点路径，用于auth中间件跳过认证
+	mcpAPIKey   string // MCP API密钥，用于认证
+	authHandler *handler.AuthHandler
 }
+
+var anonymousProviderPath = regexp.MustCompile(`^/api/v1/auth/providers/[A-Za-z0-9][A-Za-z0-9._-]{0,63}/(?:login|callback)$`)
 
 func (c *consoleWebServer) RequiredDependencies() []runtime.ComponentType {
 	return []runtime.ComponentType{
@@ -72,6 +79,15 @@ func (c *consoleWebServer) Order() int {
 
 func (c *consoleWebServer) Init(ctx runtime.BuilderContext) error {
 	c.cfg = ctx.Config().Console
+	authService, err := consoleauth.NewService(context.Background(), c.cfg.Auth.Providers, nil)
+	if err != nil {
+		return err
+	}
+	tokenIssuer, err := consoleauth.NewTokenIssuer(c.cfg.Auth.AccessToken)
+	if err != nil {
+		return err
+	}
+	c.authHandler = handler.NewAuthHandler(c.cfg.Auth, authService, tokenIssuer)
 
 	// 提前读取 MCP 配置，供 auth 中间件使用
 	cfg := ctx.Config()
@@ -97,7 +113,8 @@ func (c *consoleWebServer) Init(ctx runtime.BuilderContext) error {
 			"status": "UP",
 		})
 	})
-	store := cookie.NewStore([]byte("secret"))
+	store := cookie.NewStore([]byte(c.cfg.Auth.SessionSecret))
+	store.Options(adminSessionOptions(c.cfg.Auth))
 	r.Use(sessions.Sessions("session", store))
 	r.Use(c.authMiddleware())
 	r.Use(ginzap.Ginzap(logger.Logger(), time.RFC3339, true))
@@ -105,6 +122,16 @@ func (c *consoleWebServer) Init(ctx runtime.BuilderContext) error {
 	c.Engine = r
 	gin.SetMode(string(c.cfg.GinMode))
 	return nil
+}
+
+func adminSessionOptions(cfg *configauth.Config) sessions.Options {
+	return sessions.Options{
+		Path:     "/",
+		MaxAge:   cfg.ExpirationTime,
+		Secure:   cfg.SessionCookieSecure,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
 }
 
 func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) error {
@@ -117,7 +144,7 @@ func (c *consoleWebServer) Start(coreRt runtime.Runtime, stop <-chan struct{}) e
 	}
 	errChan := make(chan error)
 	c.cs = consolectx.NewConsoleContext(coreRt)
-	router.InitRouter(c.Engine, c.cs)
+	router.InitRouter(c.Engine, c.cs, c.authHandler)
 
 	// 注册MCP端点（如果启用）
 	c.registerMCPEndpoints(coreRt, c.Engine)
@@ -200,8 +227,7 @@ func (c *consoleWebServer) authMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		requestPath := ctx.Request.URL.Path
 
-		// skip login api
-		if strings.HasSuffix(requestPath, "/login") {
+		if isAnonymousAdminRequest(ctx.Request.Method, requestPath) {
 			ctx.Next()
 			return
 		}
@@ -235,15 +261,37 @@ func (c *consoleWebServer) authMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 其他 API 需要会话认证
+		if !strings.HasPrefix(requestPath, "/api/v1/") {
+			ctx.Next()
+			return
+		}
+
 		session := sessions.Default(ctx)
-		user := session.Get("user")
-		if user == nil {
+		principal, err := consoleauth.PrincipalFromSession(session)
+		if err != nil {
 			authErr := bizerror.New(bizerror.Unauthorized, "no access, please login")
 			ctx.JSON(http.StatusUnauthorized, model.NewBizErrorResp(authErr))
 			ctx.Abort()
 			return
 		}
+		consoleauth.PutPrincipalInContext(ctx, principal)
 		ctx.Next()
+	}
+}
+
+func isAnonymousAdminRequest(method, path string) bool {
+	switch {
+	case method == http.MethodPost && path == "/api/v1/auth/login":
+		return true
+	case method == http.MethodGet && path == "/api/v1/auth/providers":
+		return true
+	case method == http.MethodGet && path == "/api/v1/auth/jwks":
+		return true
+	case method == http.MethodGet && anonymousProviderPath.MatchString(path):
+		return true
+	case method == http.MethodGet && path == "/health":
+		return true
+	default:
+		return false
 	}
 }

@@ -330,6 +330,19 @@ spec:
   retriever:
     spec: {}
 `},
+		{name: "server_auth_enabled_requires_contract", fileName: "server.yaml", componentYML: `type: server
+spec:
+  auth:
+    enabled: true
+`},
+		{name: "server_auth_rejects_non_http_jwks", fileName: "server.yaml", componentYML: `type: server
+spec:
+  auth:
+    enabled: true
+    jwks_url: file:///tmp/jwks.json
+    issuer: dubbo-admin
+    audience: dubbo-admin-ai
+`},
 	}
 
 	for _, tt := range tests {

@@ -7,7 +7,6 @@
  * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
- *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,33 +14,11 @@
  * limitations under the License.
  */
 
-package server
+import { describe, expect, it } from 'vitest'
+import { providerLoginURL } from './session'
 
-import (
-	"dubbo-admin-ai/runtime"
-	"fmt"
-
-	"gopkg.in/yaml.v3"
-)
-
-// ServerFactory component factory function (explicit registration, does not use init)
-func ServerFactory(spec *yaml.Node) (runtime.Component, error) {
-	if spec == nil {
-		return nil, fmt.Errorf("spec is nil")
-	}
-
-	var cfg ServerSpec
-	if err := spec.Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to decode server spec: %w", err)
-	}
-
-	return NewServerComponentWithAuth(
-		cfg.Port,
-		cfg.Host,
-		cfg.Debug,
-		cfg.CORSOrigins,
-		cfg.ReadTimeout,
-		cfg.WriteTimeout,
-		cfg.Auth,
-	)
-}
+describe('providerLoginURL', () => {
+  it('encodes the configured provider ID as one path segment', () => {
+    expect(providerLoginURL('company sso')).toBe('/api/v1/auth/providers/company%20sso/login')
+  })
+})

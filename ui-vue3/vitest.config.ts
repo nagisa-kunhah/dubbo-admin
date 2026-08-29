@@ -22,8 +22,14 @@ import viteConfig from './vite.config'
 export default mergeConfig(
   viteConfig,
   defineConfig({
+    css: {
+      postcss: {
+        plugins: []
+      }
+    },
     test: {
       environment: 'jsdom',
+      css: false,
       exclude: [...configDefaults.exclude, 'e2e/*'],
       root: fileURLToPath(new URL('./', import.meta.url))
     }

@@ -16,6 +16,35 @@
  */
 
 import request from '@/base/http/request'
+import { accessTokenManager } from '@/auth/accessToken'
+
+export interface AuthProvider {
+  id: string
+  displayName: string
+}
+
+export interface AuthConfiguration {
+  methods: string[]
+  accessTokenEnabled: boolean
+  providers: AuthProvider[]
+}
+
+export interface Principal {
+  subject: string
+  username: string
+  email: string
+  groups: string[]
+  roles: string[]
+  authType: string
+  provider: string
+}
+
+export interface AccessTokenResponse {
+  accessToken: string
+  tokenType: 'Bearer'
+  expiresIn: number
+  expiresAt: number
+}
 
 export const login = (data: any): Promise<any> => {
   return request({
@@ -26,8 +55,18 @@ export const login = (data: any): Promise<any> => {
   })
 }
 export const logout = (): Promise<any> => {
+  accessTokenManager.clear()
   return request({
     url: '/auth/logout',
     method: 'post'
   })
 }
+
+export const getAuthProviders = (): Promise<{ data: AuthConfiguration }> =>
+  request({ url: '/auth/providers', method: 'get' })
+
+export const getUserInfo = (): Promise<{ data: Principal }> =>
+  request({ url: '/auth/userinfo', method: 'get' })
+
+export const issueAccessToken = (): Promise<{ data: AccessTokenResponse }> =>
+  request({ url: '/auth/token', method: 'post' })
