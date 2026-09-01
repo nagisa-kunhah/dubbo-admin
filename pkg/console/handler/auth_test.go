@@ -140,12 +140,7 @@ func authTestRouter(authHandler *AuthHandler) *gin.Engine {
 	store := cookie.NewStore([]byte("test-secret"))
 	store.Options(sessions.Options{Path: "/", MaxAge: 3600, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	r.Use(sessions.Sessions("session", store))
-	r.Use(func(c *gin.Context) {
-		if principal, err := consoleauth.PrincipalFromSession(sessions.Default(c)); err == nil {
-			consoleauth.PutPrincipalInContext(c, principal)
-		}
-		c.Next()
-	})
+	r.Use(consoleauth.SessionMiddleware())
 	auth := r.Group("/api/v1/auth")
 	auth.POST("/login", authHandler.Login)
 	auth.POST("/logout", authHandler.Logout)

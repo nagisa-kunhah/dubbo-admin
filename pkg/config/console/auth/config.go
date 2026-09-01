@@ -74,6 +74,7 @@ func (c *Config) Validate() error {
 	if len(c.Methods) == 0 {
 		c.Methods = []string{MethodPassword}
 	}
+	// Methods contains built-in login methods only; OAuth and OIDC are configured through Providers.
 	for _, method := range c.Methods {
 		if method != MethodPassword {
 			return fmt.Errorf("auth: unsupported method %q", method)
@@ -115,6 +116,7 @@ func validateProvider(id string, provider *ProviderConfig) error {
 		return fmt.Errorf("auth provider %q: invalid redirectUrl: %w", id, err)
 	}
 	expectedPath := "/api/v1/auth/providers/" + id + "/callback"
+	// The provider must return to the callback route registered for this provider ID.
 	if redirect.Path != expectedPath {
 		return fmt.Errorf("auth provider %q: redirectUrl must use callback path %q", id, expectedPath)
 	}
