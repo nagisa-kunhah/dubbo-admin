@@ -32,6 +32,7 @@ import (
 	consoleconfig "github.com/apache/dubbo-admin/pkg/config/console"
 	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
 	consoleauth "github.com/apache/dubbo-admin/pkg/console/auth"
+	consolectx "github.com/apache/dubbo-admin/pkg/console/context"
 	"github.com/apache/dubbo-admin/pkg/console/counter"
 	"github.com/apache/dubbo-admin/pkg/core/lock"
 	"github.com/apache/dubbo-admin/pkg/core/manager"
@@ -57,7 +58,9 @@ func TestInitRouterSeparatesPublicAndProtectedAuthRoutes(t *testing.T) {
 	assertRouterStatus(t, r, http.MethodGet, "/api/v1/auth/userinfo", nil, login.Result().Cookies()[0], http.StatusOK)
 }
 
-type routerTestContext struct{}
+type routerTestContext struct {
+	consolectx.Context
+}
 
 func (routerTestContext) ResourceManager() manager.ResourceManager { return nil }
 func (routerTestContext) CounterManager() counter.CounterManager   { return nil }
