@@ -43,6 +43,20 @@ func TestReleaseProviderRequiresStrongSessionSecret(t *testing.T) {
 	}
 }
 
+func TestReleaseProviderRejectsShortSessionSecret(t *testing.T) {
+	cfg := DefaultConsoleConfig()
+	cfg.Auth.Providers = map[string]auth.ProviderConfig{
+		"github": {
+			Type: auth.ProviderTypeGitHub, ClientID: "id", ClientSecret: "secret",
+			RedirectURL: "https://admin.example/api/v1/auth/providers/github/callback", PostLoginRedirectURL: "https://admin.example/admin/",
+		},
+	}
+	cfg.Auth.SessionSecret = "x"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "32 bytes") {
+		t.Fatalf("Validate() error = %v, want minimum sessionSecret length error", err)
+	}
+}
+
 func TestDebugProviderAllowsLegacySessionSecret(t *testing.T) {
 	cfg := DefaultConsoleConfig()
 	cfg.GinMode = DebugMode

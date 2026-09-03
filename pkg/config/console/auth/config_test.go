@@ -39,6 +39,19 @@ func TestConfigValidateDefaultsPasswordOnly(t *testing.T) {
 	}
 }
 
+func TestConfigValidatePreservesExplicitlyEmptyMethods(t *testing.T) {
+	cfg := validConfig()
+	cfg.Methods = []string{}
+	cfg.User = ""
+	cfg.Password = ""
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if cfg.Methods == nil || len(cfg.Methods) != 0 {
+		t.Fatalf("Methods = %#v, want an explicitly empty slice", cfg.Methods)
+	}
+}
+
 func TestConfigValidateProviders(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -51,6 +64,7 @@ func TestConfigValidateProviders(t *testing.T) {
 		{name: "bad redirect", id: "github", provider: ProviderConfig{Type: ProviderTypeGitHub, ClientID: "id", ClientSecret: "secret", RedirectURL: "://bad", PostLoginRedirectURL: "https://admin.example/admin/"}, wantErr: "redirectUrl"},
 		{name: "wrong callback", id: "github", provider: ProviderConfig{Type: ProviderTypeGitHub, ClientID: "id", ClientSecret: "secret", RedirectURL: "https://admin.example/wrong", PostLoginRedirectURL: "https://admin.example/admin/"}, wantErr: "callback"},
 		{name: "oidc missing issuer", id: "sso", provider: ProviderConfig{Type: ProviderTypeOIDC, ClientID: "id", ClientSecret: "secret", RedirectURL: "https://admin.example/api/v1/auth/providers/sso/callback", PostLoginRedirectURL: "https://admin.example/admin/"}, wantErr: "issuer"},
+		{name: "insecure oidc issuer", id: "sso", provider: ProviderConfig{Type: ProviderTypeOIDC, Issuer: "http://sso.example", ClientID: "id", ClientSecret: "secret", RedirectURL: "https://admin.example/api/v1/auth/providers/sso/callback", PostLoginRedirectURL: "https://admin.example/admin/"}, wantErr: "HTTPS"},
 	}
 
 	for _, tt := range tests {
@@ -62,6 +76,19 @@ func TestConfigValidateProviders(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestConfigValidateAllowsLoopbackHTTPForOIDCDevelopment(t *testing.T) {
+	cfg := validConfig()
+	cfg.Providers = map[string]ProviderConfig{
+		"sso": {
+			Type: ProviderTypeOIDC, Issuer: "http://127.0.0.1:5556", ClientID: "id", ClientSecret: "secret",
+			RedirectURL: "http://localhost:8888/api/v1/auth/providers/sso/callback", PostLoginRedirectURL: "http://localhost:8881/admin/",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

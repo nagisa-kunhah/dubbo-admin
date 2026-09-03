@@ -77,8 +77,8 @@ func TestOAuthTransactionIsConsumed(t *testing.T) {
 			t.Fatalf("PutOAuthTransaction() error = %v", err)
 		}
 		got, err := ConsumeOAuthTransaction(session)
-		if err != nil || got != want {
-			t.Fatalf("ConsumeOAuthTransaction() = %+v, %v", got, err)
+		if err != nil || got.ProviderID != want.ProviderID || got.State != want.State || got.CodeVerifier != "" || got.Nonce != "" {
+			t.Fatalf("ConsumeOAuthTransaction() = %+v, %v; want only provider ID and state", got, err)
 		}
 		if _, err := ConsumeOAuthTransaction(session); err == nil {
 			t.Fatal("second ConsumeOAuthTransaction() succeeded, want replay rejection")

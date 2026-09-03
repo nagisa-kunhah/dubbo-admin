@@ -23,7 +23,9 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type stubProvider struct {
@@ -115,5 +117,43 @@ func TestServiceUnknownProvider(t *testing.T) {
 	service, _ := newService(nil)
 	if _, _, err := service.Begin("missing"); !errors.Is(err, ErrProviderNotFound) {
 		t.Fatalf("Begin() error = %v", err)
+	}
+}
+
+func TestOAuthTransactionStoreConsumesStateAtomically(t *testing.T) {
+	store := newOAuthTransactionStore(time.Minute)
+	store.Put(OAuthTransaction{ProviderID: "github", State: "state", CodeVerifier: "verifier"})
+
+	var wait sync.WaitGroup
+	results := make(chan bool, 2)
+	for range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, ok := store.Consume("state")
+			results <- ok
+		}()
+	}
+	wait.Wait()
+	close(results)
+	successes := 0
+	for ok := range results {
+		if ok {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful consumes = %d, want 1", successes)
+	}
+}
+
+func TestOAuthTransactionStoreRejectsExpiredState(t *testing.T) {
+	now := time.Now()
+	store := newOAuthTransactionStore(time.Minute)
+	store.now = func() time.Time { return now }
+	store.Put(OAuthTransaction{ProviderID: "github", State: "state"})
+	now = now.Add(time.Minute)
+	if _, ok := store.Consume("state"); ok {
+		t.Fatal("Consume() accepted an expired transaction")
 	}
 }

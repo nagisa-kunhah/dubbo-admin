@@ -77,7 +77,8 @@ func PrincipalFromSession(session sessions.Session) (Principal, error) {
 }
 
 func PutOAuthTransaction(session sessions.Session, transaction OAuthTransaction) error {
-	raw, err := json.Marshal(transaction)
+	reference := OAuthTransaction{ProviderID: transaction.ProviderID, State: transaction.State}
+	raw, err := json.Marshal(reference)
 	if err != nil {
 		return fmt.Errorf("marshal OAuth transaction: %w", err)
 	}

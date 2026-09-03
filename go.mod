@@ -23,6 +23,7 @@ require (
 	dubbo.apache.org/dubbo-go/v3 v3.0.0-20260210015753-35ea886421f9
 	github.com/apache/dubbo-go-hessian2 v1.12.5
 	github.com/armon/go-radix v1.0.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/dubbogo/go-zookeeper v1.0.4-0.20211212162352-f9d2183d89d5
 	github.com/duke-git/lancet/v2 v2.3.6
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
@@ -31,7 +32,7 @@ require (
 	github.com/gin-contrib/zap v1.1.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-co-op/gocron v1.9.0
-	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/zapr v1.3.0
 	github.com/golang/protobuf v1.5.4

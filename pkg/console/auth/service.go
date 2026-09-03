@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
+	"time"
 
 	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
 )
@@ -35,12 +37,16 @@ var (
 	ErrProviderNotFound = errors.New("authentication provider not found")
 	ErrProviderMismatch = errors.New("OAuth callback provider does not match transaction")
 	ErrStateMismatch    = errors.New("OAuth callback state does not match transaction")
+	ErrTransactionGone  = errors.New("OAuth transaction is missing, expired, or already consumed")
 )
+
+const oauthTransactionTTL = 10 * time.Minute
 
 // Service coordinates provider registration and the shared OAuth callback flow.
 type Service struct {
-	providers map[string]Provider
-	public    []PublicProvider
+	providers    map[string]Provider
+	public       []PublicProvider
+	transactions *oauthTransactionStore
 }
 
 func NewService(ctx context.Context, configs map[string]configauth.ProviderConfig, client *http.Client) (*Service, error) {
@@ -69,7 +75,10 @@ func NewService(ctx context.Context, configs map[string]configauth.ProviderConfi
 }
 
 func newService(providers []Provider) (*Service, error) {
-	service := &Service{providers: make(map[string]Provider, len(providers))}
+	service := &Service{
+		providers:    make(map[string]Provider, len(providers)),
+		transactions: newOAuthTransactionStore(oauthTransactionTTL),
+	}
 	for _, provider := range providers {
 		if provider == nil || provider.ID() == "" {
 			return nil, errors.New("authentication provider must have an ID")
@@ -112,6 +121,7 @@ func (s *Service) Begin(providerID string) (OAuthTransaction, string, error) {
 			return OAuthTransaction{}, "", fmt.Errorf("generate OIDC nonce: %w", err)
 		}
 	}
+	s.transactions.Put(transaction)
 	return transaction, provider.AuthorizationURL(transaction), nil
 }
 
@@ -122,6 +132,13 @@ func (s *Service) Complete(ctx context.Context, providerID, state, code string, 
 	if subtle.ConstantTimeCompare([]byte(state), []byte(transaction.State)) != 1 {
 		return Principal{}, ErrStateMismatch
 	}
+	storedTransaction, ok := s.transactions.Consume(state)
+	if !ok {
+		return Principal{}, ErrTransactionGone
+	}
+	if providerID != storedTransaction.ProviderID {
+		return Principal{}, ErrProviderMismatch
+	}
 	provider, ok := s.providers[providerID]
 	if !ok {
 		return Principal{}, ErrProviderNotFound
@@ -129,7 +146,7 @@ func (s *Service) Complete(ctx context.Context, providerID, state, code string, 
 	if code == "" {
 		return Principal{}, errors.New("OAuth callback code is missing")
 	}
-	return provider.Authenticate(ctx, code, transaction.CodeVerifier, transaction.Nonce)
+	return provider.Authenticate(ctx, code, storedTransaction.CodeVerifier, storedTransaction.Nonce)
 }
 
 func (s *Service) PostLoginRedirectURL(providerID string) (string, error) {
@@ -151,4 +168,44 @@ func randomBase64URL(size int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// TODO: can move it to a seperated file?
+type storedOAuthTransaction struct {
+	transaction OAuthTransaction
+	expiresAt   time.Time
+}
+
+type oauthTransactionStore struct {
+	mu    sync.Mutex
+	ttl   time.Duration
+	now   func() time.Time
+	items map[string]storedOAuthTransaction
+}
+
+func newOAuthTransactionStore(ttl time.Duration) *oauthTransactionStore {
+	return &oauthTransactionStore{ttl: ttl, now: time.Now, items: make(map[string]storedOAuthTransaction)}
+}
+
+func (s *oauthTransactionStore) Put(transaction OAuthTransaction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for state, stored := range s.items {
+		if !stored.expiresAt.After(now) {
+			delete(s.items, state)
+		}
+	}
+	s.items[transaction.State] = storedOAuthTransaction{transaction: transaction, expiresAt: now.Add(s.ttl)}
+}
+
+func (s *oauthTransactionStore) Consume(state string) (OAuthTransaction, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored, ok := s.items[state]
+	delete(s.items, state)
+	if !ok || !stored.expiresAt.After(s.now()) {
+		return OAuthTransaction{}, false
+	}
+	return stored.transaction, true
 }

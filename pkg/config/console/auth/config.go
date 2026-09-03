@@ -20,9 +20,11 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/apache/dubbo-admin/pkg/config"
 )
@@ -71,7 +73,7 @@ func (c *Config) Sanitize() {
 }
 
 func (c *Config) Validate() error {
-	if len(c.Methods) == 0 {
+	if c.Methods == nil {
 		c.Methods = []string{MethodPassword}
 	}
 	// Methods contains built-in login methods only; OAuth and OIDC are configured through Providers.
@@ -129,7 +131,7 @@ func validateProvider(id string, provider *ProviderConfig) error {
 			provider.Scopes = []string{"read:user", "user:email"}
 		}
 	case ProviderTypeOIDC:
-		if _, err := validateHTTPURL(provider.Issuer); err != nil {
+		if _, err := validateOIDCURL(provider.Issuer); err != nil {
 			return fmt.Errorf("auth provider %q: invalid issuer: %w", id, err)
 		}
 		if len(provider.Scopes) == 0 {
@@ -140,6 +142,25 @@ func validateProvider(id string, provider *ProviderConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateOIDCURL(raw string) (*url.URL, error) {
+	parsed, err := validateHTTPURL(raw)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Scheme == "https" || parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname()) {
+		return parsed, nil
+	}
+	return nil, errors.New("must use HTTPS, except for an HTTP loopback development endpoint")
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func validateHTTPURL(raw string) (*url.URL, error) {

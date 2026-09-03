@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	configauth "github.com/apache/dubbo-admin/pkg/config/console/auth"
@@ -44,6 +45,7 @@ type githubProvider struct {
 	oauth                oauth2.Config
 	apiBaseURL           string
 	httpClient           *http.Client
+	canReadEmails        bool
 }
 
 type githubUser struct {
@@ -71,8 +73,9 @@ func newGitHubProvider(id string, cfg configauth.ProviderConfig, endpoints githu
 			ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL,
 			Scopes: append([]string(nil), cfg.Scopes...), Endpoint: endpoints.OAuth,
 		},
-		apiBaseURL: strings.TrimRight(endpoints.APIBaseURL, "/"),
-		httpClient: client,
+		apiBaseURL:    strings.TrimRight(endpoints.APIBaseURL, "/"),
+		httpClient:    client,
+		canReadEmails: slices.Contains(cfg.Scopes, "user:email"),
 	}
 }
 
@@ -101,7 +104,7 @@ func (p *githubProvider) Authenticate(ctx context.Context, code, codeVerifier, _
 		return Principal{}, errors.New("GitHub user numeric id is missing")
 	}
 	email := user.Email
-	if email == "" {
+	if email == "" && p.canReadEmails {
 		var emails []githubEmail
 		if err := getGitHubJSON(ctx, client, p.apiBaseURL+"/user/emails", &emails); err != nil {
 			return Principal{}, fmt.Errorf("decode GitHub emails: %w", err)

@@ -93,7 +93,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 func (h *AuthHandler) Providers(c *gin.Context) {
 	c.JSON(http.StatusOK, model.NewSuccessResp(providersResponse{
-		Methods: append([]string(nil), h.config.Methods...), Providers: h.service.PublicProviders(),
+		Methods: append([]string{}, h.config.Methods...), Providers: h.service.PublicProviders(),
 	}))
 }
 
@@ -122,7 +122,7 @@ func (h *AuthHandler) ProviderCallback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, model.NewBizErrorResp(bizerror.New(bizerror.InvalidArgument, err.Error())))
 		return
 	}
-	// Persist consumption before contacting the Provider so failures cannot be replayed.
+	// Clear the client-side transaction reference before contacting the Provider.
 	if err := session.Save(); err != nil {
 		writeSessionError(c, err)
 		return

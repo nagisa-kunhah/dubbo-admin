@@ -100,6 +100,13 @@ func TestOIDCProviderRejectsInvalidTokenClaims(t *testing.T) {
 	}{
 		{name: "issuer", mutate: func(c map[string]any) { c["iss"] = "https://wrong.example" }, wantError: "issuer"},
 		{name: "audience", mutate: func(c map[string]any) { c["aud"] = "wrong" }, wantError: "audience"},
+		{name: "missing authorized party", mutate: func(c map[string]any) {
+			c["aud"] = []string{"client-id", "another-client"}
+		}, wantError: "authorized party"},
+		{name: "authorized party", mutate: func(c map[string]any) {
+			c["aud"] = []string{"client-id", "another-client"}
+			c["azp"] = "another-client"
+		}, wantError: "authorized party"},
 		{name: "expiration", mutate: func(c map[string]any) { c["exp"] = time.Now().Add(-time.Minute).Unix() }, wantError: "expired"},
 		{name: "nonce", mutate: func(c map[string]any) { c["nonce"] = "wrong" }, wantError: "nonce"},
 		{name: "subject", mutate: func(c map[string]any) { c["sub"] = "" }, wantError: "subject"},
@@ -116,6 +123,70 @@ func TestOIDCProviderRejectsInvalidTokenClaims(t *testing.T) {
 	}
 }
 
+func TestOIDCProviderAcceptsMatchingAuthorizedPartyForMultipleAudiences(t *testing.T) {
+	provider, cleanup := newOIDCTestProvider(t, func(claims map[string]any) {
+		claims["aud"] = []string{"client-id", "another-client"}
+		claims["azp"] = "client-id"
+	}, "subject-1")
+	defer cleanup()
+	if _, err := provider.Authenticate(context.Background(), "code", "verifier", "expected-nonce"); err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+}
+
+func TestOIDCProviderAcceptsJWKWithoutOptionalAlgorithm(t *testing.T) {
+	provider, cleanup := newOIDCTestProviderWithJWKAlgorithm(t, func(map[string]any) {}, "subject-1", "")
+	defer cleanup()
+	if _, err := provider.Authenticate(context.Background(), "code", "verifier", "expected-nonce"); err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+}
+
+func TestOIDCProviderRejectsJWKWithConflictingAlgorithm(t *testing.T) {
+	provider, cleanup := newOIDCTestProviderWithJWKAlgorithm(t, func(map[string]any) {}, "subject-1", string(jose.RS512))
+	defer cleanup()
+	if _, err := provider.Authenticate(context.Background(), "code", "verifier", "expected-nonce"); err == nil || !strings.Contains(err.Error(), "RS256") {
+		t.Fatalf("Authenticate() error = %v, want RS256 error", err)
+	}
+}
+
+func TestOIDCProviderRejectsInsecureDiscoveredEndpoint(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": server.URL, "authorization_endpoint": server.URL + "/authorize",
+			"token_endpoint": "http://sso.example/token", "jwks_uri": server.URL + "/jwks",
+		})
+	}))
+	defer server.Close()
+	_, err := NewOIDCProvider(context.Background(), "sso", configauth.ProviderConfig{
+		Issuer: server.URL, ClientID: "client-id", ClientSecret: "secret", RedirectURL: "https://admin.example/callback", Scopes: []string{"openid"},
+	}, server.Client())
+	if err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("NewOIDCProvider() error = %v, want HTTPS error", err)
+	}
+}
+
+func TestOIDCProviderUsesBoundedDefaultHTTPClient(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer": server.URL, "authorization_endpoint": server.URL + "/authorize",
+			"token_endpoint": server.URL + "/token", "jwks_uri": server.URL + "/jwks",
+		})
+	}))
+	defer server.Close()
+	provider, err := NewOIDCProvider(context.Background(), "sso", configauth.ProviderConfig{
+		Issuer: server.URL, ClientID: "client-id", ClientSecret: "secret", RedirectURL: "https://admin.example/callback", Scopes: []string{"openid"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewOIDCProvider() error = %v", err)
+	}
+	if timeout := provider.(*oidcProvider).httpClient.Timeout; timeout <= 0 {
+		t.Fatalf("HTTP client timeout = %v, want a positive timeout", timeout)
+	}
+}
+
 func TestOIDCProviderRejectsUserInfoSubjectMismatch(t *testing.T) {
 	provider, cleanup := newOIDCTestProvider(t, func(map[string]any) {}, "other-subject")
 	defer cleanup()
@@ -126,6 +197,10 @@ func TestOIDCProviderRejectsUserInfoSubjectMismatch(t *testing.T) {
 }
 
 func newOIDCTestProvider(t *testing.T, mutate func(map[string]any), userInfoSubject string) (Provider, func()) {
+	return newOIDCTestProviderWithJWKAlgorithm(t, mutate, userInfoSubject, string(jose.RS256))
+}
+
+func newOIDCTestProviderWithJWKAlgorithm(t *testing.T, mutate func(map[string]any), userInfoSubject, algorithm string) (Provider, func()) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -137,7 +212,7 @@ func newOIDCTestProvider(t *testing.T, mutate func(map[string]any), userInfoSubj
 		case "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(map[string]any{"issuer": server.URL, "authorization_endpoint": server.URL + "/authorize", "token_endpoint": server.URL + "/token", "jwks_uri": server.URL + "/jwks", "userinfo_endpoint": server.URL + "/userinfo"})
 		case "/jwks":
-			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "kid", Algorithm: string(jose.RS256), Use: "sig"}}})
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "kid", Algorithm: algorithm, Use: "sig"}}})
 		case "/token":
 			claims := map[string]any{"iss": server.URL, "sub": "subject-1", "aud": "client-id", "exp": time.Now().Add(time.Minute).Unix(), "iat": time.Now().Add(-time.Second).Unix(), "nonce": "expected-nonce"}
 			mutate(claims)

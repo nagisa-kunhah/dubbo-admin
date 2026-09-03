@@ -78,8 +78,9 @@ func (c *Config) Validate() error {
 	if err := c.Auth.Validate(); err != nil {
 		return err
 	}
-	if c.GinMode == ReleaseMode && len(c.Auth.Providers) > 0 && c.Auth.SessionSecret == auth.DefaultSessionSecret {
-		return bizerror.New(bizerror.ConfigError, "auth sessionSecret must be explicitly configured when providers are enabled in release mode")
+	// Release deployments with external providers must reject the legacy default session secret and other short cookie-signing keys.
+	if c.GinMode == ReleaseMode && len(c.Auth.Providers) > 0 && len([]byte(c.Auth.SessionSecret)) < 32 {
+		return bizerror.New(bizerror.ConfigError, "auth sessionSecret must contain at least 32 bytes when providers are enabled in release mode")
 	}
 	return nil
 }

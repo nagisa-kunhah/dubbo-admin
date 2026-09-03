@@ -109,6 +109,18 @@ func TestAuthHandlerPasswordOnlyProviderListUsesEmptyArray(t *testing.T) {
 	}
 }
 
+func TestAuthHandlerProviderOnlyMethodListUsesEmptyArray(t *testing.T) {
+	service, err := consoleauth.NewServiceFromProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newAuthHandler(&configauth.Config{Methods: []string{}}, service)
+	resp := doAuthRequest(authTestRouter(handler), http.MethodGet, "/api/v1/auth/providers", nil)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), `"methods":[]`) {
+		t.Fatalf("status = %d, body = %s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestAuthHandlerOAuthCallbackConsumesTransaction(t *testing.T) {
 	provider := &handlerProvider{}
 	service, _ := consoleauth.NewServiceFromProviders(provider)
@@ -127,8 +139,8 @@ func TestAuthHandlerOAuthCallbackConsumesTransaction(t *testing.T) {
 	if callback.Code != http.StatusFound || callback.Header().Get("Location") != "https://admin.example/admin/" || provider.authenticated != 1 {
 		t.Fatalf("callback status = %d location = %q calls = %d body = %s", callback.Code, callback.Header().Get("Location"), provider.authenticated, callback.Body.String())
 	}
-	updatedCookie := callback.Result().Cookies()[0]
-	replay := doAuthRequest(router, http.MethodGet, callbackURL, updatedCookie)
+	// Replaying the original cookie must fail even though it still contains the transaction.
+	replay := doAuthRequest(router, http.MethodGet, callbackURL, cookie)
 	if replay.Code != http.StatusBadRequest || provider.authenticated != 1 {
 		t.Fatalf("replay status = %d calls = %d body = %s", replay.Code, provider.authenticated, replay.Body.String())
 	}
