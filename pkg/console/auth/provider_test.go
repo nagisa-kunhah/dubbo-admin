@@ -206,8 +206,8 @@ func TestOAuthTransactionStoreConsumeRemovesOrderEntry(t *testing.T) {
 	if _, ok := store.Consume("first"); !ok {
 		t.Fatal("Consume() did not find transaction")
 	}
-	if got := store.order.Len(); got != 0 {
-		t.Fatalf("order length = %d, want 0", got)
+	if got := store.expiryQueue.Len(); got != 0 {
+		t.Fatalf("expiry queue length = %d, want 0", got)
 	}
 	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "second"}); err != nil {
 		t.Fatalf("Put() after consume error = %v", err)

@@ -185,18 +185,18 @@ type storedOAuthTransaction struct {
 
 // TODO: move this store into redis?
 type oauthTransactionStore struct {
-	mu       sync.Mutex
-	ttl      time.Duration
-	capacity int
-	now      func() time.Time
-	items    map[string]*list.Element
-	order    *list.List
+	mu          sync.Mutex
+	ttl         time.Duration
+	capacity    int
+	now         func() time.Time
+	items       map[string]*list.Element
+	expiryQueue *list.List
 }
 
 func newOAuthTransactionStore(ttl time.Duration, capacity int) *oauthTransactionStore {
 	return &oauthTransactionStore{
 		ttl: ttl, capacity: capacity, now: time.Now,
-		items: make(map[string]*list.Element), order: list.New(),
+		items: make(map[string]*list.Element), expiryQueue: list.New(),
 	}
 }
 
@@ -211,7 +211,7 @@ func (s *oauthTransactionStore) Put(transaction OAuthTransaction) error {
 	if len(s.items) >= s.capacity {
 		return ErrTransactionStoreFull
 	}
-	element := s.order.PushBack(storedOAuthTransaction{transaction: transaction, expiresAt: now.Add(s.ttl)})
+	element := s.expiryQueue.PushBack(storedOAuthTransaction{transaction: transaction, expiresAt: now.Add(s.ttl)})
 	s.items[transaction.State] = element
 	return nil
 }
@@ -232,7 +232,7 @@ func (s *oauthTransactionStore) Consume(state string) (OAuthTransaction, bool) {
 }
 
 func (s *oauthTransactionStore) removeExpired(now time.Time) {
-	for element := s.order.Front(); element != nil; element = s.order.Front() {
+	for element := s.expiryQueue.Front(); element != nil; element = s.expiryQueue.Front() {
 		stored := element.Value.(storedOAuthTransaction)
 		if stored.expiresAt.After(now) {
 			return
@@ -244,5 +244,5 @@ func (s *oauthTransactionStore) removeExpired(now time.Time) {
 func (s *oauthTransactionStore) remove(element *list.Element) {
 	stored := element.Value.(storedOAuthTransaction)
 	delete(s.items, stored.transaction.State)
-	s.order.Remove(element)
+	s.expiryQueue.Remove(element)
 }
