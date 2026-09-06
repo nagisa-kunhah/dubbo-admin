@@ -146,6 +146,18 @@ func TestAuthHandlerOAuthCallbackConsumesTransaction(t *testing.T) {
 	}
 }
 
+func TestWriteProviderErrorMapsFullTransactionStoreToTooManyRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	writeProviderError(ctx, consoleauth.ErrTransactionStoreFull)
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTooManyRequests)
+	}
+}
+
 func authTestRouter(authHandler *AuthHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

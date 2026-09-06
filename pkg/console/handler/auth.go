@@ -163,6 +163,8 @@ func writeProviderError(c *gin.Context, err error) {
 	if errors.Is(err, consoleauth.ErrProviderNotFound) {
 		status = http.StatusNotFound
 		code = bizerror.NotFoundError
+	} else if errors.Is(err, consoleauth.ErrTransactionStoreFull) {
+		status = http.StatusTooManyRequests
 	}
 	c.JSON(status, model.NewBizErrorResp(bizerror.New(code, err.Error())))
 }

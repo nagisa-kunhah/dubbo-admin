@@ -18,6 +18,7 @@
 package auth
 
 import (
+	"container/list"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -34,13 +35,17 @@ import (
 )
 
 var (
-	ErrProviderNotFound = errors.New("authentication provider not found")
-	ErrProviderMismatch = errors.New("OAuth callback provider does not match transaction")
-	ErrStateMismatch    = errors.New("OAuth callback state does not match transaction")
-	ErrTransactionGone  = errors.New("OAuth transaction is missing, expired, or already consumed")
+	ErrProviderNotFound     = errors.New("authentication provider not found")
+	ErrProviderMismatch     = errors.New("OAuth callback provider does not match transaction")
+	ErrStateMismatch        = errors.New("OAuth callback state does not match transaction")
+	ErrTransactionGone      = errors.New("OAuth transaction is missing, expired, or already consumed")
+	ErrTransactionStoreFull = errors.New("OAuth transaction store is full")
 )
 
-const oauthTransactionTTL = 10 * time.Minute
+const (
+	oauthTransactionTTL      = 10 * time.Minute
+	oauthTransactionCapacity = 10_000
+)
 
 // Service coordinates provider registration and the shared OAuth callback flow.
 type Service struct {
@@ -77,7 +82,7 @@ func NewService(ctx context.Context, configs map[string]configauth.ProviderConfi
 func newService(providers []Provider) (*Service, error) {
 	service := &Service{
 		providers:    make(map[string]Provider, len(providers)),
-		transactions: newOAuthTransactionStore(oauthTransactionTTL),
+		transactions: newOAuthTransactionStore(oauthTransactionTTL, oauthTransactionCapacity),
 	}
 	for _, provider := range providers {
 		if provider == nil || provider.ID() == "" {
@@ -121,7 +126,9 @@ func (s *Service) Begin(providerID string) (OAuthTransaction, string, error) {
 			return OAuthTransaction{}, "", fmt.Errorf("generate OIDC nonce: %w", err)
 		}
 	}
-	s.transactions.Put(transaction)
+	if err := s.transactions.Put(transaction); err != nil {
+		return OAuthTransaction{}, "", err
+	}
 	return transaction, provider.AuthorizationURL(transaction), nil
 }
 
@@ -177,35 +184,64 @@ type storedOAuthTransaction struct {
 }
 
 type oauthTransactionStore struct {
-	mu    sync.Mutex
-	ttl   time.Duration
-	now   func() time.Time
-	items map[string]storedOAuthTransaction
+	mu       sync.Mutex
+	ttl      time.Duration
+	capacity int
+	now      func() time.Time
+	items    map[string]*list.Element
+	order    *list.List
 }
 
-func newOAuthTransactionStore(ttl time.Duration) *oauthTransactionStore {
-	return &oauthTransactionStore{ttl: ttl, now: time.Now, items: make(map[string]storedOAuthTransaction)}
+func newOAuthTransactionStore(ttl time.Duration, capacity int) *oauthTransactionStore {
+	return &oauthTransactionStore{
+		ttl: ttl, capacity: capacity, now: time.Now,
+		items: make(map[string]*list.Element), order: list.New(),
+	}
 }
 
-func (s *oauthTransactionStore) Put(transaction OAuthTransaction) {
+func (s *oauthTransactionStore) Put(transaction OAuthTransaction) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	for state, stored := range s.items {
-		if !stored.expiresAt.After(now) {
-			delete(s.items, state)
-		}
+	s.removeExpired(now)
+	if existing, ok := s.items[transaction.State]; ok {
+		s.remove(existing)
 	}
-	s.items[transaction.State] = storedOAuthTransaction{transaction: transaction, expiresAt: now.Add(s.ttl)}
+	if len(s.items) >= s.capacity {
+		return ErrTransactionStoreFull
+	}
+	element := s.order.PushBack(storedOAuthTransaction{transaction: transaction, expiresAt: now.Add(s.ttl)})
+	s.items[transaction.State] = element
+	return nil
 }
 
 func (s *oauthTransactionStore) Consume(state string) (OAuthTransaction, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	stored, ok := s.items[state]
-	delete(s.items, state)
-	if !ok || !stored.expiresAt.After(s.now()) {
+	element, ok := s.items[state]
+	if !ok {
+		return OAuthTransaction{}, false
+	}
+	stored := element.Value.(storedOAuthTransaction)
+	s.remove(element)
+	if !stored.expiresAt.After(s.now()) {
 		return OAuthTransaction{}, false
 	}
 	return stored.transaction, true
+}
+
+func (s *oauthTransactionStore) removeExpired(now time.Time) {
+	for element := s.order.Front(); element != nil; element = s.order.Front() {
+		stored := element.Value.(storedOAuthTransaction)
+		if stored.expiresAt.After(now) {
+			return
+		}
+		s.remove(element)
+	}
+}
+
+func (s *oauthTransactionStore) remove(element *list.Element) {
+	stored := element.Value.(storedOAuthTransaction)
+	delete(s.items, stored.transaction.State)
+	s.order.Remove(element)
 }

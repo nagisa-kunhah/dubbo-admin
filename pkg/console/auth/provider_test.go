@@ -121,8 +121,10 @@ func TestServiceUnknownProvider(t *testing.T) {
 }
 
 func TestOAuthTransactionStoreConsumesStateAtomically(t *testing.T) {
-	store := newOAuthTransactionStore(time.Minute)
-	store.Put(OAuthTransaction{ProviderID: "github", State: "state", CodeVerifier: "verifier"})
+	store := newOAuthTransactionStore(time.Minute, 2)
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "state", CodeVerifier: "verifier"}); err != nil {
+		t.Fatal(err)
+	}
 
 	var wait sync.WaitGroup
 	results := make(chan bool, 2)
@@ -149,11 +151,65 @@ func TestOAuthTransactionStoreConsumesStateAtomically(t *testing.T) {
 
 func TestOAuthTransactionStoreRejectsExpiredState(t *testing.T) {
 	now := time.Now()
-	store := newOAuthTransactionStore(time.Minute)
+	store := newOAuthTransactionStore(time.Minute, 2)
 	store.now = func() time.Time { return now }
-	store.Put(OAuthTransaction{ProviderID: "github", State: "state"})
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "state"}); err != nil {
+		t.Fatal(err)
+	}
 	now = now.Add(time.Minute)
 	if _, ok := store.Consume("state"); ok {
 		t.Fatal("Consume() accepted an expired transaction")
+	}
+}
+
+func TestOAuthTransactionStoreRejectsNewTransactionAtCapacity(t *testing.T) {
+	store := newOAuthTransactionStore(time.Minute, 2)
+	for _, state := range []string{"first", "second"} {
+		if err := store.Put(OAuthTransaction{ProviderID: "github", State: state}); err != nil {
+			t.Fatalf("Put(%q) error = %v", state, err)
+		}
+	}
+
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "third"}); !errors.Is(err, ErrTransactionStoreFull) {
+		t.Fatalf("Put() error = %v, want ErrTransactionStoreFull", err)
+	}
+	if _, ok := store.Consume("first"); !ok {
+		t.Fatal("capacity rejection evicted an active transaction")
+	}
+	if _, ok := store.Consume("third"); ok {
+		t.Fatal("capacity rejection retained the rejected transaction")
+	}
+}
+
+func TestOAuthTransactionStoreReclaimsExpiredCapacity(t *testing.T) {
+	now := time.Now()
+	store := newOAuthTransactionStore(time.Minute, 1)
+	store.now = func() time.Time { return now }
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "expired"}); err != nil {
+		t.Fatal(err)
+	}
+
+	now = now.Add(time.Minute)
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "current"}); err != nil {
+		t.Fatalf("Put() after expiry error = %v", err)
+	}
+	if _, ok := store.Consume("current"); !ok {
+		t.Fatal("new transaction was not retained")
+	}
+}
+
+func TestOAuthTransactionStoreConsumeRemovesOrderEntry(t *testing.T) {
+	store := newOAuthTransactionStore(time.Minute, 1)
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.Consume("first"); !ok {
+		t.Fatal("Consume() did not find transaction")
+	}
+	if got := store.order.Len(); got != 0 {
+		t.Fatalf("order length = %d, want 0", got)
+	}
+	if err := store.Put(OAuthTransaction{ProviderID: "github", State: "second"}); err != nil {
+		t.Fatalf("Put() after consume error = %v", err)
 	}
 }
