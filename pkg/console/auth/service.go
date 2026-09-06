@@ -183,6 +183,7 @@ type storedOAuthTransaction struct {
 	expiresAt   time.Time
 }
 
+// TODO: move this store into redis?
 type oauthTransactionStore struct {
 	mu       sync.Mutex
 	ttl      time.Duration
