@@ -54,6 +54,15 @@ console:
     user: admin
     password: dubbo@2025
     expirationTime: 3600
+    # [Optional] Sign short-lived RS256 tokens used by the independent AI service.
+    accessToken:
+      enabled: false
+      # issuer: dubbo-admin
+      # keyId: admin-key-1
+      # privateKeyFile: /etc/dubbo-admin/keys/access-token-private.pem
+      # ttl: 1800
+      # audiences:
+      #   - dubbo-admin-ai
 
 # [Optional] Model Context Protocol endpoint. Disabled unless explicitly enabled.
 mcp:
